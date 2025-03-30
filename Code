@@ -1,0 +1,73 @@
+#include <Servo.h>
+
+// Pin definitions
+#define BUTTON_PIN 2        // Pin for button switch
+#define ESC_PIN 9           // PWM signal pin for ESC
+
+// Variables
+int startPWM = 80;           // Initial PWM value (adjust based on ESC requirements)
+int maxPWM = 85;             // Maximum PWM value for the ESC (increase to provide more noticeable acceleration)
+int accelTime = 500;        // Acceleration time in milliseconds (example: 2 seconds)
+int distanceTime = 1500;     // Time the motor should run at max speed (in milliseconds)
+int decelTime = 500;        // Deceleration time in milliseconds (example: 2 seconds)
+int startDelay = 5000;       // Delay before motor starts after pressing button (in milliseconds)
+
+Servo esc;                   // Create Servo object for ESC
+
+bool motorRunning = false;   // Flag to check if motor is running
+unsigned long startTime = 0; // Variable to track time motor starts
+bool buttonPressed = false;  // Flag to track button state
+
+void setup() {
+  Serial.begin(9600); 
+  Serial.println("Hello!");                // Initialize Serial communication for debugging
+  pinMode(BUTTON_PIN, INPUT_PULLUP);  // Set button pin as input with pull-up resistor
+  esc.attach(ESC_PIN);                // Attach ESC to the specified PWM pin
+  esc.write(0);                       // Initialize ESC at 0 speed (full stop)
+  
+  
+}
+
+void loop() {
+  // Check for button press and ensure it is only registered once
+  if (digitalRead(BUTTON_PIN) == LOW && !buttonPressed && !motorRunning) {
+    Serial.println("Button pressed! Motor will start soon.");
+    buttonPressed = true;             // Mark button as pressed
+    delay(startDelay);                // Wait for the configurable start delay
+    startTime = millis();             // Record the time motor starts
+    motorRunning = true;              // Set motor running flag
+  }
+
+  // Reset the buttonPressed flag when the button is released
+  if (digitalRead(BUTTON_PIN) == HIGH && buttonPressed) {
+    buttonPressed = false;            // Allow button press to be detected again
+  }
+
+  if (motorRunning) {
+    unsigned long elapsedTime = millis() - startTime;  // Calculate elapsed time since motor started
+
+    if (elapsedTime < accelTime) {
+      // Accelerate the motor linearly from startPWM to maxPWM over accelTime
+      int currentPWM = map(elapsedTime, 0, accelTime, startPWM, maxPWM);
+      Serial.print("Accelerating motor. PWM: ");
+      Serial.println(currentPWM);
+      esc.write(currentPWM);
+    } else if (elapsedTime < accelTime + distanceTime) {
+      // Run motor at max speed
+      Serial.println("Running motor at max speed.");
+      esc.write(maxPWM);
+    } else if (elapsedTime < accelTime + distanceTime + decelTime) {
+      // Decelerate the motor linearly from maxPWM to startPWM over decelTime
+      unsigned long decelElapsedTime = elapsedTime - (accelTime + distanceTime);
+      int currentPWM = map(decelElapsedTime, 0, decelTime, maxPWM, startPWM);
+      Serial.print("Decelerating motor. PWM: ");
+      Serial.println(currentPWM);
+      esc.write(currentPWM);
+    } else {
+      // Stop the motor after deceleration
+      Serial.println("Stopping motor.");
+      esc.write(0);  // Send 0 to stop the motor
+      motorRunning = false;  // Reset flag to allow restarting the process
+    }
+  }
+}
